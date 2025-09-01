@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: docker.io/library/postgres:15-alpine
+    environment:
+      POSTGRES_DB: mfa_mvp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mfa_mvp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mfa-api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=host=postgres port=5432 user=postgres password=postgres dbname=mfa_mvp sslmode=disable
+      - BOOTSTRAP_TOKEN=dev_bootstrap
+      - ENCRYPTION_KEY=myverysecretkey32characterslong!
+      - PORT=8080
+      - ISSUER=SecureAuth MVP
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./index.html:/app/index.html
+
+volumes:
+  postgres_data:

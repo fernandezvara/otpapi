@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: OTP MFA API
+  version: 1.0.0
+  description: Endpoints for managing MFA users, API keys, and customers.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/auth/register:
+    post:
+      summary: Register customer account (dev returns verification token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name: { type: string }
+                email: { type: string }
+                password: { type: string }
+              required: [company_name, email, password]
+      responses:
+        '201': { description: Created }
+  /api/v1/auth/verify_email:
+    post:
+      summary: Verify email using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+              required: [token]
+      responses:
+        '200': { description: Verified }
+  /api/v1/auth/login:
+    post:
+      summary: Login with email/password (returns session token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+              required: [email, password]
+      responses:
+        '200': { description: OK }
+  /api/v1/auth/logout:
+    post:
+      summary: Logout (revoke session)
+      security:
+        - SessionToken: []
+      responses:
+        '200': { description: Logged out }
+  /api/v1/auth/password/request_reset:
+    post:
+      summary: Request password reset (dev returns token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+              required: [email]
+      responses:
+        '200': { description: OK }
+  /api/v1/auth/password/reset:
+    post:
+      summary: Reset password using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+                new_password: { type: string }
+              required: [token, new_password]
+      responses:
+        '200': { description: Updated }
+  /api/v1/billing/webhook:
+    post:
+      summary: Stripe webhook receiver (Stripe signature verified)
+      description: |
+        Receives Stripe events. The endpoint verifies the `Stripe-Signature` header with the configured
+        `STRIPE_WEBHOOK_SECRET`. The raw event is stored and linked to the internal customer when possible.
+      parameters:
+        - in: header
+          name: Stripe-Signature
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Received }
+  /api/v1/mfa/register:
+    post:
+      summary: Register an MFA user
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                account_name:
+                  type: string
+                issuer:
+                  type: string
+              required: [id, issuer]
+      responses:
+        '201':
+          description: Created
+  /api/v1/mfa/{id}/qr:
+    get:
+      summary: Get QR code PNG for MFA user
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: PNG image }
+  /api/v1/mfa/{id}:
+    post:
+      summary: Validate an OTP for user
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                otp:
+                  type: string
+              required: [otp]
+      responses:
+        '200': { description: OK }
+        '401': { description: Invalid }
+  /api/v1/mfa/{id}/disable:
+    post:
+      summary: Disable MFA for user
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Disabled }
+  /api/v1/mfa/{id}/reset:
+    post:
+      summary: Reset MFA for user (new secret + backup codes)
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_name: { type: string }
+                issuer: { type: string }
+      responses:
+        '200': { description: OK }
+  /api/v1/mfa/{id}/backup_codes/regenerate:
+    post:
+      summary: Regenerate backup codes
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /api/v1/mfa/{id}/backup_codes/consume:
+    post:
+      summary: Consume a backup code
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+              required: [code]
+      responses:
+        '200': { description: Consumed }
+  /api/v1/keys/:
+    get:
+      summary: List API keys
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create API key
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_name: { type: string }
+                environment: { type: string }
+              required: [key_name]
+      responses:
+        '201': { description: Created }
+  /api/v1/keys/{id}/disable:
+    post:
+      summary: Disable API key
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Disabled }
+  /api/v1/keys/{id}/rotate:
+    post:
+      summary: Rotate API key
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '201': { description: Created }
+  /api/v1/keys/{id}/usage:
+    get:
+      summary: Get usage summary for an API key
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: period
+          description: Aggregation window
+          required: false
+          schema:
+            type: string
+            enum: [24h, 7d, 30d, 90d, all]
+            default: 30d
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+  /api/v1/customers/:
+    get:
+      summary: List customers
+      security:
+        - AdminToken: []
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create customer
+      security:
+        - AdminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name: { type: string }
+                email: { type: string }
+                subscription_tier: { type: string }
+              required: [company_name, email]
+      responses:
+        '201': { description: Created }
+  /api/v1/customers/{id}:
+    post:
+      summary: Update customer
+      security:
+        - AdminToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Updated }
+  /api/v1/customers/{id}/disable:
+    post:
+      summary: Disable customer
+      security:
+        - AdminToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Disabled }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: APIKey
+    AdminToken:
+      type: apiKey
+      in: header
+      name: X-Bootstrap-Token
+    SessionToken:
+      type: apiKey
+      in: header
+      name: X-Session-Token
+  schemas:
+    UsagePoint:
+      type: object
+      properties:
+        day: { type: string, format: date-time }
+        total: { type: integer, format: int64 }
+        success: { type: integer, format: int64 }
+    UsageByEndpoint:
+      type: object
+      properties:
+        endpoint: { type: string }
+        total: { type: integer, format: int64 }
+        success: { type: integer, format: int64 }
+    UsageSummary:
+      type: object
+      properties:
+        total: { type: integer, format: int64 }
+        success: { type: integer, format: int64 }
+        failed: { type: integer, format: int64 }
+        first_event: { type: string, format: date-time, nullable: true }
+        last_event: { type: string, format: date-time, nullable: true }
+        by_day:
+          type: array
+          items: { $ref: '#/components/schemas/UsagePoint' }
+        by_endpoint:
+          type: array
+          items: { $ref: '#/components/schemas/UsageByEndpoint' }
