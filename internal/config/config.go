@@ -21,6 +21,8 @@ type Config struct {
 	// Billing/Stripe
 	StripeAPIKey        string
 	StripeWebhookSecret string
+	// Pricing
+	PricePerRequestUSD  float64
 }
 
 var cfg *Config
@@ -39,6 +41,7 @@ func Load() *Config {
 		RateLimitPerAPIKey: getenvInt("RATE_LIMIT_PER_API_KEY", 600),
 		StripeAPIKey:        getenv("STRIPE_API_KEY", ""),
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
+		PricePerRequestUSD:  getenvFloat("PRICE_PER_REQUEST_USD", 0.00001),
 	}
 	cfg = c
 	return c
@@ -57,6 +60,15 @@ func getenvInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func getenvFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

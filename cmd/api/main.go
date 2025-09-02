@@ -111,6 +111,13 @@ func main() {
 		console := v1.Group("/console")
 		console.Use(middleware.SessionAuth())
 		{
+			// Customer-level usage summary
+			console.GET("/usage/summary", api.GetCustomerUsageSummary)
+
+			// Billing
+			console.GET("/billing/events", api.ListBillingEvents)
+			console.GET("/billing/summary", api.GetBillingSummary)
+
 			ck := console.Group("/keys")
 			{
 				ck.POST("/", api.CreateAPIKey)

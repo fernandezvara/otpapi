@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"otp/internal/config"
 	"otp/internal/db"
 	"otp/internal/audit"
 	"otp/internal/keys"
@@ -33,6 +34,7 @@ type usageSummary struct {
     Total      int64              `json:"total"`
     Success    int64              `json:"success"`
     Failed     int64              `json:"failed"`
+    EstimatedCostUSD float64      `json:"estimated_cost_usd"`
     FirstEvent *time.Time         `json:"first_event,omitempty"`
     LastEvent  *time.Time         `json:"last_event,omitempty"`
     ByDay      []usagePoint       `json:"by_day"`
@@ -124,6 +126,9 @@ func GetAPIKeyUsage(c *gin.Context) {
     resp := usageSummary{Total: total, Success: success, Failed: failed, ByDay: byDay, ByEndpoint: byEp}
     if first.Valid { resp.FirstEvent = &first.Time }
     if last.Valid { resp.LastEvent = &last.Time }
+    // estimated cost
+    price := config.Get().PricePerRequestUSD
+    resp.EstimatedCostUSD = float64(total) * price
     c.JSON(http.StatusOK, resp)
 }
 

@@ -27,6 +27,7 @@ export interface UsageSummary {
   total: number
   success: number
   failed: number
+  estimated_cost_usd: number
   first_event?: string
   last_event?: string
   by_day: UsagePoint[]
