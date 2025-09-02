@@ -3,9 +3,11 @@ package audit
 import (
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"otp/internal/db"
+	"otp/internal/realtime"
 )
 
 // Log writes an audit event. actor_type: api_key|customer|system
@@ -41,5 +43,19 @@ func Log(c *gin.Context, event string, metadata map[string]any) {
 	)
 	if err != nil {
 		log.Printf("audit log insert failed: %v", err)
+	}
+
+	// Fire-and-forget realtime notification scoped to customer if available
+	if customerID != "" {
+		realtime.PublishDefault(customerID, realtime.Event{
+			Type:      "audit",
+			Timestamp: time.Now(),
+			Data: map[string]any{
+				"event":      event,
+				"actor_type": actorType,
+				"actor_id":   actorID,
+				"ip":         ip,
+			},
+		})
 	}
 }

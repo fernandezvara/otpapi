@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+    "time"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"
@@ -25,6 +26,109 @@ type RegisterRequest struct {
 	ID          string `json:"id" binding:"required"`
 	AccountName string `json:"account_name"`
 	Issuer      string `json:"issuer" binding:"required"`
+}
+
+// CreateConsoleMFAUser creates an MFA user under the authenticated customer (session auth),
+// generating a new secret and backup codes. Intended for console/testing use.
+type createConsoleMFARequest struct {
+    ID          string `json:"id" binding:"required"`
+    AccountName string `json:"account_name"`
+    Issuer      string `json:"issuer"`
+}
+
+func CreateConsoleMFAUser(c *gin.Context) {
+    var req createConsoleMFARequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    customerID := c.GetString("customer_id")
+
+    // Check if user already exists
+    var exists bool
+    if err := db.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM mfa_users WHERE customer_id = $1 AND user_id = $2)", customerID, req.ID).Scan(&exists); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+        return
+    }
+    if exists {
+        c.JSON(http.StatusConflict, gin.H{"error": "User already registered for MFA"})
+        return
+    }
+
+    issuer := strings.TrimSpace(req.Issuer)
+    if issuer == "" { issuer = config.Get().Issuer }
+    accountName := strings.TrimSpace(req.AccountName)
+    if accountName == "" { accountName = fmt.Sprintf("User_%s", req.ID) }
+
+    key, err := totp.Generate(totp.GenerateOpts{Issuer: issuer, AccountName: accountName, SecretSize: 32})
+    if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate TOTP secret"}); return }
+    encSecret, err := crypto.Encrypt(key.Secret())
+    if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt secret"}); return }
+
+    // backup codes
+    backupCodes, err := generateBackupCodes()
+    if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate backup codes"}); return }
+    encCodes := make([]string, len(backupCodes))
+    for i, bc := range backupCodes { encCodes[i], err = crypto.Encrypt(bc); if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt backup codes"}); return } }
+
+    // Insert without api_key_id (console created)
+    _, err = db.DB.Exec(`INSERT INTO mfa_users (customer_id, user_id, secret_key_encrypted, backup_codes_encrypted, account_name, issuer)
+        VALUES ($1, $2, $3, $4, $5, $6)`, customerID, req.ID, encSecret, pq.Array(encCodes), accountName, issuer)
+    if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store MFA data"}); return }
+
+    audit.Log(c, "mfa.register.console", map[string]any{"user_id": req.ID, "issuer": issuer, "account_name": accountName})
+    usage.Record(c, "mfa.register.console", true)
+    c.JSON(http.StatusCreated, gin.H{"qr_code_url": fmt.Sprintf("/api/v1/console/mfa/%s/qr", req.ID), "backup_codes": backupCodes})
+}
+
+type mfaUserItem struct {
+    UserID      string    `json:"user_id"`
+    AccountName string    `json:"account_name"`
+    Issuer      string    `json:"issuer"`
+    IsActive    bool      `json:"is_active"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ListMFAUsers lists MFA users for the authenticated customer with optional search and status filter.
+func ListMFAUsers(c *gin.Context) {
+    customerID := c.GetString("customer_id")
+    q := strings.TrimSpace(c.Query("q"))
+    status := strings.TrimSpace(strings.ToLower(c.Query("status"))) // active|disabled|all
+
+    where := "WHERE customer_id = $1"
+    args := []any{customerID}
+    argIdx := 2
+    if q != "" {
+        where += fmt.Sprintf(" AND (user_id ILIKE $%d OR COALESCE(account_name,'') ILIKE $%d OR COALESCE(issuer,'') ILIKE $%d)", argIdx, argIdx, argIdx)
+        args = append(args, "%"+q+"%")
+        argIdx++
+    }
+    switch status {
+    case "active":
+        where += " AND is_active = true"
+    case "disabled":
+        where += " AND is_active = false"
+    }
+
+    query := "SELECT user_id, COALESCE(account_name,''), COALESCE(issuer,''), is_active, created_at, updated_at FROM mfa_users " + where + " ORDER BY created_at DESC LIMIT 200"
+    rows, err := db.DB.Query(query, args...)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+        return
+    }
+    defer rows.Close()
+
+    items := []mfaUserItem{}
+    for rows.Next() {
+        var it mfaUserItem
+        if err := rows.Scan(&it.UserID, &it.AccountName, &it.Issuer, &it.IsActive, &it.CreatedAt, &it.UpdatedAt); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Scan error"})
+            return
+        }
+        items = append(items, it)
+    }
+    c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
 // DisableMFA disables MFA for a given user (soft-disable).
@@ -99,7 +203,11 @@ func ResetMFA(c *gin.Context) {
 	}
 	audit.Log(c, "mfa.reset", map[string]any{"user_id": userID, "issuer": issuer, "account_name": accountName})
 	usage.Record(c, "mfa.reset", true)
-	c.JSON(http.StatusOK, gin.H{"qr_code_url": fmt.Sprintf("http://localhost:8080/api/v1/mfa/%s/qr", userID), "backup_codes": backupCodes})
+	qrPath := fmt.Sprintf("/api/v1/mfa/%s/qr", userID)
+	if strings.TrimSpace(c.GetString("api_key_id")) == "" {
+		qrPath = fmt.Sprintf("/api/v1/console/mfa/%s/qr", userID)
+	}
+	c.JSON(http.StatusOK, gin.H{"qr_code_url": qrPath, "backup_codes": backupCodes})
 }
 
 // RegenerateBackupCodes replaces backup codes and clears used list.
@@ -260,7 +368,7 @@ func RegisterMFA(c *gin.Context) {
 	}
 
 	resp := RegisterResponse{
-		QRCodeURL:   fmt.Sprintf("http://localhost:8080/api/v1/mfa/%s/qr", req.ID),
+		QRCodeURL:   fmt.Sprintf("/api/v1/mfa/%s/qr", req.ID),
 		BackupCodes: backupCodes,
 	}
 	audit.Log(c, "mfa.register", map[string]any{"user_id": req.ID, "api_key_id": apiKeyID, "issuer": issuer, "account_name": accountName})

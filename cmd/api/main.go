@@ -115,10 +115,23 @@ func main() {
 			{
 				ck.POST("/", api.CreateAPIKey)
 				ck.GET("/", api.ListAPIKeys)
+				ck.GET("/:id/usage", api.GetAPIKeyUsage)
 				ck.POST("/:id/disable", api.DisableAPIKey)
 				ck.POST("/:id/rotate", api.RotateAPIKey)
 			}
+
+			cm := console.Group("/mfa")
+			{
+				cm.GET("/", api.ListMFAUsers)
+				cm.GET("/:id/qr", api.GetQRCode)
+				cm.POST("/:id/disable", api.DisableMFA)
+				cm.POST("/:id/reset", api.ResetMFA)
+				cm.POST("/:id/backup_codes/regenerate", api.RegenerateBackupCodes)
+			}
 		}
+
+		// Realtime analytics stream (SSE) - use QS auth to support EventSource
+		v1.GET("/console/analytics/stream", middleware.SessionAuthQS(), api.AnalyticsStream)
 
 		// Customer management (admin protected)
 		customers := v1.Group("/customers")
