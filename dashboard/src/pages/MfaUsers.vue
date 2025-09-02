@@ -27,38 +27,37 @@
       <div v-if="loading" class="text-sm text-gray-500">Loading...</div>
       <div v-else>
         <div v-if="items.length === 0" class="text-sm text-gray-500">No users found.</div>
-        <div v-else class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="text-left border-b">
-                <th class="py-2 pr-4">User ID</th>
-                <th class="py-2 pr-4">Account</th>
-                <th class="py-2 pr-4">Issuer</th>
-                <th class="py-2 pr-4">Status</th>
-                <th class="py-2 pr-4">Created</th>
-                <th class="py-2 pr-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="u in items" :key="u.user_id" class="border-b last:border-0">
-                <td class="py-2 pr-4">{{ u.user_id }}</td>
-                <td class="py-2 pr-4">{{ u.account_name || '-' }}</td>
-                <td class="py-2 pr-4">{{ u.issuer }}</td>
-                <td class="py-2 pr-4">
-                  <span :class="u.is_active ? 'text-green-700' : 'text-gray-500'">{{ u.is_active ? 'active' : 'disabled' }}</span>
-                </td>
-                <td class="py-2 pr-4">{{ formatDate(u.created_at) }}</td>
-                <td class="py-2 pr-4">
-                  <div class="flex gap-2">
-                    <button @click="viewQr(u.user_id)" class="border rounded px-2 py-1" :disabled="!u.is_active">QR</button>
-                    <button @click="onReset(u.user_id)" class="border rounded px-2 py-1">Reset</button>
-                    <button @click="onRegenerate(u.user_id)" class="border rounded px-2 py-1" :disabled="!u.is_active">Backup Codes</button>
-                    <button @click="onDisable(u.user_id)" class="border rounded px-2 py-1" :disabled="!u.is_active">Disable</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else>
+          <ResponsiveTable :columns="columns" :items="items" :rowKey="rowKey">
+            <template #cell-is_active="{ item }">
+              <span :class="item.is_active ? 'text-green-700' : 'text-gray-500'">{{ item.is_active ? 'active' : 'disabled' }}</span>
+            </template>
+            <template #cell-created_at="{ item }">
+              {{ formatDate(item.created_at) }}
+            </template>
+            <template #cell-account_name="{ item }">
+              {{ item.account_name || '-' }}
+            </template>
+            <template #cell-actions="{ item }">
+              <!-- Desktop actions -->
+              <div class="hidden md:flex gap-2">
+                <button @click="viewQr(item.user_id)" class="border rounded px-2 py-1" :disabled="!item.is_active">QR</button>
+                <button @click="onReset(item.user_id)" class="border rounded px-2 py-1">Reset</button>
+                <button @click="onRegenerate(item.user_id)" class="border rounded px-2 py-1" :disabled="!item.is_active">Backup Codes</button>
+                <button @click="onDisable(item.user_id)" class="border rounded px-2 py-1" :disabled="!item.is_active">Disable</button>
+              </div>
+              <!-- Mobile kebab -->
+              <div class="md:hidden relative">
+                <button class="border rounded px-2 py-1" @click="actionsOpenId = actionsOpenId === item.user_id ? '' : item.user_id" aria-label="More actions">⋯</button>
+                <div v-if="actionsOpenId === item.user_id" class="absolute mt-1 right-0 z-10 w-44 rounded border bg-white shadow">
+                  <button @click="viewQr(item.user_id); actionsOpenId = ''" :disabled="!item.is_active" class="block w-full text-left px-3 py-2 hover:bg-gray-50 disabled:text-gray-400">QR</button>
+                  <button @click="onReset(item.user_id); actionsOpenId = ''" class="block w-full text-left px-3 py-2 hover:bg-gray-50">Reset</button>
+                  <button @click="onRegenerate(item.user_id); actionsOpenId = ''" :disabled="!item.is_active" class="block w-full text-left px-3 py-2 hover:bg-gray-50 disabled:text-gray-400">Backup Codes</button>
+                  <button @click="onDisable(item.user_id); actionsOpenId = ''" :disabled="!item.is_active" class="block w-full text-left px-3 py-2 hover:bg-gray-50 disabled:text-gray-400">Disable</button>
+                </div>
+              </div>
+            </template>
+          </ResponsiveTable>
         </div>
       </div>
     </div>
@@ -120,12 +119,25 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import ResponsiveTable from '../components/common/ResponsiveTable.vue'
 import { listMfaUsers, disableMfaUser, resetMfaUser, regenerateBackupCodes, registerMfaWithApiKey, fetchQrBlobWithApiKey, type MfaUserItem, type ResetMfaResponse } from '../services/consoleMfa'
 
 const items = ref<MfaUserItem[]>([])
 const loading = ref(false)
 const query = ref('')
 const status = ref<'all'|'active'|'disabled'>('all')
+const actionsOpenId = ref('')
+
+const columns = [
+  { key: 'user_id', label: 'User ID' },
+  { key: 'account_name', label: 'Account' },
+  { key: 'issuer', label: 'Issuer' },
+  { key: 'is_active', label: 'Status' },
+  { key: 'created_at', label: 'Created' },
+  { key: 'actions', label: 'Actions' },
+]
+
+const rowKey = (r: MfaUserItem) => r.user_id
 
 const qrUrl = ref('')
 const resetResult = ref<ResetMfaResponse | null>(null)
@@ -164,7 +176,9 @@ async function viewQr(id: string) {
   }
   const blob = await fetchQrBlobWithApiKey(apiKeySecret.value, id)
   if (qrUrl.value && qrUrl.value.startsWith('blob:')) {
-    try { URL.revokeObjectURL(qrUrl.value) } catch {}
+    try { URL.revokeObjectURL(qrUrl.value) } catch {
+      /* ignore revokeObjectURL errors */
+    }
   }
   qrUrl.value = URL.createObjectURL(blob)
 }

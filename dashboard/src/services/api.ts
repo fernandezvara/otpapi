@@ -14,7 +14,9 @@ api.interceptors.request.use((config) => {
       config.headers = config.headers || {}
       ;(config.headers as any)['X-Session-Token'] = token
     }
-  } catch {}
+  } catch {
+    /* ignore auth store access errors */
+  }
   return config
 })
 

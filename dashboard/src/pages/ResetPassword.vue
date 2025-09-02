@@ -1,24 +1,24 @@
 <template>
   <div class="min-h-screen grid place-items-center p-6">
-    <div class="w-full max-w-md bg-white border rounded p-6 shadow-sm">
+    <div class="w-full max-w-md card shadow-sm">
       <h1 class="text-xl font-semibold mb-4 text-center">Reset password</h1>
       <form @submit.prevent="onSubmit" class="space-y-3">
         <div>
-          <label class="block text-sm font-medium mb-1">Reset token</label>
-          <input v-model="token" type="text" required class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" />
+          <label for="token" class="block text-sm font-medium mb-1">Reset token</label>
+          <input id="token" v-model="token" type="text" autocomplete="one-time-code" required class="form-control" />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1">New password</label>
-          <input v-model="password" type="password" required class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" />
+          <label for="new_password" class="block text-sm font-medium mb-1">New password</label>
+          <input id="new_password" v-model="password" type="password" autocomplete="new-password" required class="form-control" />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1">Confirm new password</label>
-          <input v-model="confirm" type="password" required class="w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" />
+          <label for="confirm_password" class="block text-sm font-medium mb-1">Confirm new password</label>
+          <input id="confirm_password" v-model="confirm" type="password" autocomplete="new-password" required class="form-control" />
         </div>
-        <button :disabled="loading" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded px-3 py-2 disabled:opacity-70">
+        <button :disabled="loading" class="w-full btn-primary">
           {{ loading ? 'Updating...' : 'Update password' }}
         </button>
-        <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+        <p v-if="error" class="text-sm text-red-600" aria-live="polite">{{ error }}</p>
       </form>
 
       <div v-if="success" class="mt-4 text-sm bg-green-50 border border-green-100 rounded p-3">

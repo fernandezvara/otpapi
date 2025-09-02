@@ -5,7 +5,7 @@
     <div class="rounded border bg-white p-4 relative">
       <div v-if="toast" class="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-3 py-1 rounded">{{ toast }}</div>
 
-      <div class="flex items-center gap-2 mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
         <label class="text-sm text-gray-600">Period</label>
         <select v-model="period" class="border rounded px-2 py-1 text-sm">
           <option value="24h">24h</option>
@@ -14,10 +14,10 @@
           <option value="90d">90d</option>
           <option value="all">all</option>
         </select>
-        <button @click="reload" class="ml-auto text-sm px-3 py-1 border rounded hover:bg-gray-50">Refresh</button>
+        <button @click="reload" class="sm:ml-auto text-sm px-3 py-1 border rounded hover:bg-gray-50">Refresh</button>
       </div>
 
-      <div class="grid grid-cols-4 gap-3 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div class="p-3 rounded border">
           <div class="text-xs text-gray-500">Requests</div>
           <div class="text-xl font-semibold">{{ summary?.total ?? 0 }}</div>
@@ -36,32 +36,27 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="border rounded p-3">
           <div class="text-sm font-medium mb-2">Requests by day</div>
-          <LineChart v-if="chartData.labels.length" :chart-data="chartData" :options="chartOptions" style="height:260px"/>
+          <LineChart v-if="chartData.labels.length" :chart-data="chartData" :options="chartOptions" class="h-64 md:h-72"/>
           <div v-else class="text-sm text-gray-500">No data</div>
         </div>
         <div class="border rounded p-3">
           <div class="text-sm font-medium mb-2">Recent Billing Events</div>
           <div v-if="events.length === 0" class="text-sm text-gray-500">No events</div>
-          <div v-else class="max-h-72 overflow-auto">
-            <table class="w-full text-sm">
-              <thead class="text-gray-500">
-                <tr>
-                  <th class="text-left py-1">Time</th>
-                  <th class="text-left py-1">Type</th>
-                  <th class="text-left py-1">ID</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="it in events" :key="it.id" class="border-t">
-                  <td class="py-1">{{ new Date(it.created_at).toLocaleString() }}</td>
-                  <td class="py-1 font-mono">{{ it.event_type }}</td>
-                  <td class="py-1 text-gray-600 truncate max-w-[12rem]">{{ it.id }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-else>
+            <ResponsiveTable :columns="eventColumns" :items="events" :rowKey="(r) => r.id">
+              <template #cell-created_at="{ item }">
+                {{ new Date(item.created_at).toLocaleString() }}
+              </template>
+              <template #cell-event_type="{ item }">
+                <span class="font-mono">{{ item.event_type }}</span>
+              </template>
+              <template #cell-id="{ item }">
+                <span class="text-gray-600 break-all">{{ item.id }}</span>
+              </template>
+            </ResponsiveTable>
           </div>
         </div>
       </div>
@@ -79,6 +74,7 @@ import { Chart, registerables } from 'chart.js'
 import { getCustomerUsageSummary, type UsageSummary } from '../services/consoleUsage'
 import { getBillingSummary, listBillingEvents, type BillingSummary, type BillingEventItem } from '../services/consoleBilling'
 import { useAuthStore } from '../stores/auth'
+import ResponsiveTable from '../components/common/ResponsiveTable.vue'
 
 Chart.register(...registerables)
 
@@ -92,6 +88,12 @@ const events = ref<BillingEventItem[]>([])
 const error = ref<string | null>(null)
 const toast = ref<string | null>(null)
 
+const eventColumns = [
+  { key: 'created_at', label: 'Time' },
+  { key: 'event_type', label: 'Type' },
+  { key: 'id', label: 'ID' },
+]
+
 let es: EventSource | null = null
 
 function formatUSD(v: number) {
@@ -99,8 +101,8 @@ function formatUSD(v: number) {
 }
 
 const chartData = computed(() => {
-  const labels = summary.value?.by_day?.map(p => new Date(p.day).toLocaleDateString()) ?? []
-  const totals = summary.value?.by_day?.map(p => p.total) ?? []
+  const labels = summary.value?.by_day?.map((p: { day: string }) => new Date(p.day).toLocaleDateString()) ?? []
+  const totals = summary.value?.by_day?.map((p: { total: number }) => p.total) ?? []
   return {
     labels,
     datasets: [
@@ -169,7 +171,9 @@ function connectSSE() {
         reload()
         setTimeout(() => (toast.value = null), 2500)
       }
-    } catch {}
+    } catch {
+      /* ignore malformed billing audit event */
+    }
   })
 }
 

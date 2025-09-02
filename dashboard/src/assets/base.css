@@ -1,3 +1,4 @@
+/* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,3 +6,37 @@
 :root {
   --brand: #4f46e5; /* indigo-600 */
 }
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Improve default focus visibility */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+/* Shared component utilities */
+@layer components {
+  .card {
+    @apply rounded border bg-white p-4;
+  }
+  .table-wrapper {
+    @apply overflow-x-auto -mx-4 sm:mx-0;
+  }
+  .form-control {
+    @apply w-full border rounded px-3 h-11 focus:outline-none focus:ring focus:ring-indigo-200;
+  }
+  .btn-primary {
+    @apply bg-indigo-600 hover:bg-indigo-700 text-white rounded px-4 h-11 disabled:opacity-70;
+  }
+}
+/* stylelint-enable at-rule-no-unknown */
